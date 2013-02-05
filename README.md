@@ -5,14 +5,17 @@ commands via API
 
 ## Usage
 
-# Retrieve list of commands
+### Setup
 
 Add the following URL path to your project
 
 ```python
 url(r'^management_api/', include('management_api.urls')),
 ```
-Then access your list of management commands via:
+
+### Retrieve list of commands
+
+Access your list of management commands via:
 
 ```
 /management_api/v1/commands/?format=json
