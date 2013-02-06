@@ -1,11 +1,12 @@
 from django.conf import settings
+from django.core.management import get_commands, load_command_class
+from django.core.management.base import BaseCommand
 
 from tastypie.authorization import Authorization
 from tastypie.bundle import Bundle
 from tastypie.exceptions import NotFound, ImmediateHttpResponse
 from tastypie.resources import Resource
 from tastypie.utils import dict_strip_unicode_keys
-
 
 from management_api.utils import get_command_list, execute_command
 
@@ -58,23 +59,37 @@ class CommandsResource(Resource):
         if command not in available_commands:
             raise NotFound('Management comamnd is not available over API')
 
-        result = execute_command(command, '--help')
-
-        if result is None:
+        try:
+            app_name = get_commands()[command]
+        except KeyError:
             raise ImmediateHttpResponse('Error getting management command details')
 
+        if isinstance(app_name, BaseCommand):
+            # If the command is already loaded, use it directly.
+            klass = app_name
+        else:
+            klass = load_command_class(app_name, command)
+
+        description = klass.usage(command)
+        description = description.replace('\n', '')
+        options = {}
+
+        for option in klass.option_list:
+            option_name = ', '.join(option._long_opts)
+            options[option_name] = option.help
+
         bundle.data.update({
-            'result': result
+            'description': description,
+            'options': options
         })
 
         return self.create_response(request, bundle)
 
-    def post_detail(self, request, **kwargs):
+    def post_list(self, request, **kwargs):
         """
         The POST handler accepts a command name and parameters in a list and executes the
         command
         """
-
         deserialized = self.deserialize(
             request,
             request.raw_post_data,
@@ -94,13 +109,12 @@ class CommandsResource(Resource):
         if command not in available_commands:
             raise NotFound('Management comamnd is not available over API')
 
-        args = request_data.get('args', [])
-        kwargs = request_data.get('kwargs', {})
+        command_args = request_data.get('args', [])
 
-        result = execute_command(command, *args, **kwargs)
+        result = execute_command(command, *command_args)
 
         if result is None:
-            raise ImmediateHttpResponse('Error executing management command')
+            raise ImmediateHttpResponse('Error retrieving details for command')
 
         bundle = Bundle()
         bundle.data.update({
